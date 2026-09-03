@@ -1,6 +1,6 @@
 # KrishiSetu (कृषिसेतु) 🌾
 
-[![Smart India Hackathon 2026](https://img.shields.io/badge/SIH-2026_Problem_26033-orange.svg)](https://www.sih.gov.in/)
+[![Smart India Hackathon 2026](https://img.shields.io/badge/SIH-2026-orange.svg)](https://www.sih.gov.in/)
 [![Flutter](https://img.shields.io/badge/Flutter-3.27_Web_&_Mobile-blue.svg?logo=flutter)](https://flutter.dev)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111_Async_REST-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed-Vercel-black.svg?logo=vercel)](https://vercel.com)
