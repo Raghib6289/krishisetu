@@ -1,0 +1,42 @@
+# Miscellaneous & Logs
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.db
+backend/krishisetu.db
+
+# Flutter & Dart internal artifacts
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+krishisetu/.dart_tool/
+krishisetu/.packages
+krishisetu/.pub-cache/
+krishisetu/.pub/
+krishisetu/build/
+
+# IDE & Editor files
+*.iml
+.idea/
+.vscode/
+.fleet/
+
+# Mobile specific
+android/.gradle/
+android/local.properties
+android/app/build/
+ios/.symlinks/
+ios/Pods/
