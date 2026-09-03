@@ -9,7 +9,7 @@
 
 > **Empowering Smallholder Farmers • Eliminating Exploitative Middlemen • AI Demand Forecasting & Smart Cold-Chain Logistics**
 
-**KrishiSetu** is an open-source, production-grade agricultural technology platform built for **Smart India Hackathon 2026 (Problem Statement 26033)**. It directly connects farmers with retail buyers and bulk consumers while orchestrating route-optimized logistics and providing statistical ARIMA wholesale demand forecasting.
+**KrishiSetu** is an open-source, production-grade agricultural technology platform built for **Smart India Hackathon 2026**. It directly connects farmers with retail buyers and bulk consumers while orchestrating route-optimized logistics and providing statistical ARIMA wholesale demand forecasting.
 
 ---
 
