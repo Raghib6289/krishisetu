@@ -4,7 +4,7 @@
 [![Flutter](https://img.shields.io/badge/Flutter-3.27_Web_&_Mobile-blue.svg?logo=flutter)](https://flutter.dev)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111_Async_REST-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed-Vercel-black.svg?logo=vercel)](https://vercel.com)
-[![License: MIT](https://img.shields.io/badge/License-Apache-2.0-yellow.svg?logo=Apache)](LICENSE)
+[![License: Apache]](LICENSE)
 [![Open Source](https://img.shields.io/badge/Open_Source-❤️-red.svg)](https://github.com/Raghib6289/krishisetu)
 
 > **Empowering Smallholder Farmers • Eliminating Exploitative Middlemen • AI Demand Forecasting & Smart Cold-Chain Logistics**
