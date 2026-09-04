@@ -185,3 +185,144 @@ class WebSocketService {
     _telemetryController.close();
   }
 }
+
+class InventoryEvent {
+  final String type; // CROP_ADDED, STOCK_UPDATED, RESTOCKED, CROP_UPDATED, CROP_DELETED
+  final Map<String, dynamic>? crop;
+  final String? cropId;
+  final String? cropName;
+  final String? farmerName;
+  final double? newQuantityQuintals;
+  final String? status;
+  final double? purchasedKg;
+  final String? buyerName;
+  final String? orderId;
+  final bool isOutOfStock;
+  final String message;
+  final String timestamp;
+
+  InventoryEvent({
+    required this.type,
+    this.crop,
+    this.cropId,
+    this.cropName,
+    this.farmerName,
+    this.newQuantityQuintals,
+    this.status,
+    this.purchasedKg,
+    this.buyerName,
+    this.orderId,
+    this.isOutOfStock = false,
+    required this.message,
+    required this.timestamp,
+  });
+
+  factory InventoryEvent.fromJson(Map<String, dynamic> json) {
+    return InventoryEvent(
+      type: json['type'] ?? '',
+      crop: json['crop'] as Map<String, dynamic>?,
+      cropId: json['crop_id'] ?? (json['crop'] != null ? json['crop']['id'] : null),
+      cropName: json['crop_name'] ?? (json['crop'] != null ? json['crop']['crop_name'] : null),
+      farmerName: json['farmer_name'] ?? (json['crop'] != null ? json['crop']['farmer_name'] : null),
+      newQuantityQuintals: (json['new_quantity_quintals'] as num?)?.toDouble() ??
+          (json['crop'] != null ? (json['crop']['quantity_quintals'] as num?)?.toDouble() : null),
+      status: json['status'] ?? (json['crop'] != null ? json['crop']['status'] : null),
+      purchasedKg: (json['purchased_kg'] as num?)?.toDouble(),
+      buyerName: json['buyer_name'],
+      orderId: json['order_id'],
+      isOutOfStock: json['is_out_of_stock'] == true || (json['status'] == 'OUT_OF_STOCK'),
+      message: json['message'] ?? '',
+      timestamp: json['timestamp'] ?? DateTime.now().toIso8601String(),
+    );
+  }
+}
+
+class InventoryWebSocketService {
+  static final InventoryWebSocketService _instance = InventoryWebSocketService._internal();
+  factory InventoryWebSocketService() => _instance;
+
+  InventoryWebSocketService._internal() {
+    connect();
+  }
+
+  WebSocketChannel? _channel;
+  StreamSubscription? _subscription;
+  Timer? _reconnectTimer;
+
+  final _inventoryController = StreamController<InventoryEvent>.broadcast();
+  Stream<InventoryEvent> get inventoryStream => _inventoryController.stream;
+
+  final _connectionStatusController = StreamController<bool>.broadcast();
+  Stream<bool> get connectionStatusStream => _connectionStatusController.stream;
+
+  bool _isConnected = false;
+  bool get isConnected => _isConnected;
+
+  void connect() {
+    if (_isConnected && _channel != null) return;
+
+    final wsEndpoint = '${ApiClient.wsUrl}/ws/inventory';
+    debugPrint('[InventoryWebSocket] Connecting to $wsEndpoint');
+
+    try {
+      final uri = Uri.parse(wsEndpoint);
+      _channel = WebSocketChannel.connect(uri);
+      _isConnected = true;
+      _connectionStatusController.add(true);
+
+      _subscription = _channel?.stream.listen(
+        (data) {
+          try {
+            final parsed = jsonDecode(data as String) as Map<String, dynamic>;
+            final event = InventoryEvent.fromJson(parsed);
+            _inventoryController.add(event);
+          } catch (e) {
+            debugPrint('[InventoryWebSocket] Error parsing event: $e');
+          }
+        },
+        onError: (error) {
+          debugPrint('[InventoryWebSocket] Channel error: $error');
+          _handleDisconnect();
+        },
+        onDone: () {
+          debugPrint('[InventoryWebSocket] Channel closed.');
+          _handleDisconnect();
+        },
+      );
+    } catch (e) {
+      debugPrint('[InventoryWebSocket] Connection failed: $e');
+      _handleDisconnect();
+    }
+  }
+
+  void _handleDisconnect() {
+    _isConnected = false;
+    _connectionStatusController.add(false);
+    _subscription?.cancel();
+    _channel?.sink.close();
+    _channel = null;
+
+    // Auto reconnect after 3 seconds
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      if (!_isConnected) {
+        connect();
+      }
+    });
+  }
+
+  void broadcastLocalEvent(InventoryEvent event) {
+    // Allows local emission if operating in offline mode
+    _inventoryController.add(event);
+  }
+
+  void disconnect() {
+    _reconnectTimer?.cancel();
+    _subscription?.cancel();
+    _channel?.sink.close();
+    _channel = null;
+    _isConnected = false;
+    _connectionStatusController.add(false);
+  }
+}
+

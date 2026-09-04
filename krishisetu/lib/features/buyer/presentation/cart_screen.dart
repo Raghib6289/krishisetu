@@ -142,74 +142,150 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      // Out of stock warning banner
+                      if (buyerState.hasOutOfStockCartItems)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.red.shade300),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Real-time update: An item in your cart is depleted or exceeds available stock! Please adjust or remove it.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red.shade900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
                       // Cart items list
                       ...buyerState.cartItems.map((item) {
+                        final isItemOut = item.crop.isOutOfStock;
+                        final exceedsAvailable = item.quantityKg > item.crop.availableKg;
+
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: (isItemOut || exceedsAvailable) ? Colors.red.shade400 : Colors.transparent,
+                              width: 1.5,
+                            ),
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.network(
-                                    item.crop.imageUrl,
-                                    width: 60,
-                                    height: 60,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      width: 60,
-                                      height: 60,
-                                      color: Colors.green.shade50,
-                                      child: const Icon(Icons.eco, color: AppTheme.primaryGreen),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        item.crop.cropName,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                      ),
-                                      Text(
-                                        '₹${item.crop.pricePerKg.toStringAsFixed(1)} / kg • ${item.crop.farmerName}',
-                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Subtotal: ₹${item.totalPrice.toStringAsFixed(0)}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.primaryGreen,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                // Quantity Stepper
                                 Row(
                                   children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.remove_circle_outline, size: 20),
-                                      onPressed: () => ref
-                                          .read(buyerProvider.notifier)
-                                          .updateQuantity(item.crop.id, item.quantityKg - 50),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        item.crop.imageUrl,
+                                        width: 60,
+                                        height: 60,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          width: 60,
+                                          height: 60,
+                                          color: Colors.green.shade50,
+                                          child: const Icon(Icons.eco, color: AppTheme.primaryGreen),
+                                        ),
+                                      ),
                                     ),
-                                    Text(
-                                      '${item.quantityKg} kg',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item.crop.cropName,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          Text(
+                                            '₹${item.crop.pricePerKg.toStringAsFixed(1)} / kg • ${item.crop.farmerName}',
+                                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Subtotal: ₹${item.totalPrice.toStringAsFixed(0)}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.primaryGreen,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    IconButton(
-                                      icon: const Icon(Icons.add_circle_outline, size: 20),
-                                      onPressed: () => ref
-                                          .read(buyerProvider.notifier)
-                                          .updateQuantity(item.crop.id, item.quantityKg + 50),
-                                    ),
+                                    // Quantity Stepper
+                                    Row(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.remove_circle_outline, size: 20),
+                                          onPressed: () => ref
+                                              .read(buyerProvider.notifier)
+                                              .updateQuantity(item.crop.id, item.quantityKg - 50),
+                                        ),
+                                        Text(
+                                          '${item.quantityKg} kg',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: (isItemOut || exceedsAvailable) ? Colors.red : Colors.black87,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.add_circle_outline, size: 20),
+                                          onPressed: (isItemOut || item.quantityKg >= item.crop.availableKg)
+                                              ? null
+                                              : () => ref
+                                                  .read(buyerProvider.notifier)
+                                                  .updateQuantity(item.crop.id, item.quantityKg + 50),
+                                        ),
+                                      ],
+                                    )
                                   ],
-                                )
+                                ),
+                                if (isItemOut) ...[
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.shade100,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      '🚨 Out of Stock - sold to another buyer in real time',
+                                      style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ] else if (exceedsAvailable) ...[
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade100,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '⚠️ Only ${item.crop.availableKg.toInt()} kg left in stock',
+                                      style: TextStyle(fontSize: 11, color: Colors.orange.shade900, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -312,24 +388,38 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           backgroundColor: const Color(0xFF0C2340), // Razorpay dark navy
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        onPressed: _isProcessingPayment ? null : _triggerRazorpayCheckout,
+                        onPressed: (_isProcessingPayment || buyerState.hasOutOfStockCartItems)
+                            ? null
+                            : _triggerRazorpayCheckout,
                         child: _isProcessingPayment
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
                                 child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                               )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.lock, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Pay ₹${buyerState.finalTotal.toStringAsFixed(0)} via Razorpay',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            : buyerState.hasOutOfStockCartItems
+                                ? const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.error_outline, size: 18),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Resolve Stock Issues to Pay',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.lock, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Pay ₹${buyerState.finalTotal.toStringAsFixed(0)} via Razorpay',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
                       ),
                     ),
                   ),

@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Body
 from backend.models import OrderCreate, OrderItem, CartItem
 from backend.database import get_connection
 
+from backend.services.inventory_ws import inventory_manager
+
 router = APIRouter(prefix="/api/orders", tags=["Logistics & Orders"])
 
 def _row_to_order(row) -> OrderItem:
@@ -35,18 +37,51 @@ def _row_to_order(row) -> OrderItem:
     )
 
 @router.post("", response_model=OrderItem)
-def create_order(order_data: OrderCreate):
+async def create_order(order_data: OrderCreate):
     order_id = f"ord_{uuid.uuid4().hex[:6]}"
     total = sum(i.quantity_kg * i.price_per_kg for i in order_data.items)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     items_dicts = [i.model_dump() for i in order_data.items]
     items_json = json.dumps(items_dicts)
+    broadcast_events = []
 
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # Insert Order
+        # 1. Stock check & deduction
+        for item in order_data.items:
+            cursor.execute("SELECT crop_name, quantity_quintals, farmer_name, status FROM crops WHERE id = ?", (item.listing_id,))
+            crop_row = cursor.fetchone()
+            if crop_row:
+                current_quintals = float(crop_row["quantity_quintals"])
+                quintals_bought = item.quantity_kg / 100.0
+                new_qty = max(0.0, current_quintals - quintals_bought)
+
+                if new_qty <= 0.001:
+                    new_status = "OUT_OF_STOCK"
+                elif new_qty <= 2.0:
+                    new_status = "LOW_STOCK"
+                else:
+                    new_status = "AVAILABLE"
+
+                cursor.execute(
+                    "UPDATE crops SET quantity_quintals = ?, status = ? WHERE id = ?",
+                    (round(new_qty, 2), new_status, item.listing_id)
+                )
+
+                broadcast_events.append({
+                    "crop_id": item.listing_id,
+                    "crop_name": crop_row["crop_name"],
+                    "farmer_name": crop_row["farmer_name"],
+                    "new_quantity_quintals": new_qty,
+                    "status": new_status,
+                    "purchased_kg": item.quantity_kg,
+                    "buyer_name": order_data.buyer_name,
+                    "order_id": order_id
+                })
+
+        # 2. Insert Order
         cursor.execute(
             """INSERT INTO orders (id, buyer_id, buyer_name, buyer_phone, delivery_address, 
                delivery_lat, delivery_lng, items_json, total_amount, status, driver_id, driver_name, 
@@ -60,17 +95,23 @@ def create_order(order_data: OrderCreate):
             )
         )
 
-        # Atomically deduct purchased quantities from crop listings (1 quintal = 100 kg)
-        for item in order_data.items:
-            quintals_bought = item.quantity_kg / 100.0
-            cursor.execute(
-                """UPDATE crops 
-                   SET quantity_quintals = MAX(0.0, quantity_quintals - ?) 
-                   WHERE id = ?""",
-                (quintals_bought, item.listing_id)
-            )
-
         conn.commit()
+
+    # 3. Broadcast real-time stock updates to all connected buyers & farmers
+    for ev in broadcast_events:
+        try:
+            await inventory_manager.broadcast_stock_updated(
+                crop_id=ev["crop_id"],
+                crop_name=ev["crop_name"],
+                farmer_name=ev["farmer_name"],
+                new_quantity_quintals=ev["new_quantity_quintals"],
+                status=ev["status"],
+                purchased_kg=ev["purchased_kg"],
+                buyer_name=ev["buyer_name"],
+                order_id=ev["order_id"]
+            )
+        except Exception:
+            pass
 
     return OrderItem(
         id=order_id,

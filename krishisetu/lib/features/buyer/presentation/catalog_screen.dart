@@ -149,14 +149,82 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      Text(
-                        'Direct Farm Produce (${buyerState.catalog.length} available)',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textDark,
-                        ),
+                      // Real-Time Sync Indicator & Section Title
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Direct Farm Produce (${buyerState.catalog.length})',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textDark,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: buyerState.isLiveConnected ? Colors.green.shade50 : Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: buyerState.isLiveConnected ? Colors.green.shade300 : Colors.orange.shade300,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(
+                                    color: buyerState.isLiveConnected ? AppTheme.primaryGreen : Colors.orange,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  buyerState.isLiveConnected ? 'Live Synced' : 'Reconnecting...',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: buyerState.isLiveConnected ? AppTheme.primaryGreen : Colors.orange.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
+
+                      if (buyerState.lastLiveEventMessage != null) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.green.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.bolt, color: AppTheme.primaryGreen, size: 16),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  buyerState.lastLiveEventMessage!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.primaryGreen,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -189,7 +257,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                       crossAxisCount: 2,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      childAspectRatio: 0.68,
+                      childAspectRatio: 0.64,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -231,21 +299,31 @@ class _ProduceCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isOut = crop.isOutOfStock;
+    final isLow = crop.isLowStock;
+
     return Card(
       clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isOut ? Colors.red.shade300 : (isLow ? Colors.orange.shade300 : Colors.grey.shade200),
+          width: isOut ? 1.5 : 1.0,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Crop Image with Grade Badge
+          // Crop Image with Grade & Stock Badge
           Stack(
             children: [
               Image.network(
                 crop.imageUrl,
-                height: 110,
+                height: 105,
                 width: double.infinity,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(
-                  height: 110,
+                  height: 105,
                   color: Colors.green.shade50,
                   child: const Icon(Icons.grass, color: AppTheme.primaryGreen, size: 40),
                 ),
@@ -265,6 +343,46 @@ class _ProduceCard extends ConsumerWidget {
                   ),
                 ),
               ),
+              if (isOut)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade700,
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 1))
+                      ],
+                    ),
+                    child: const Text(
+                      'OUT OF STOCK',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                )
+              else if (isLow)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade800,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'ONLY ${crop.availableKg.toInt()} KG LEFT',
+                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
             ],
           ),
           Padding(
@@ -276,7 +394,11 @@ class _ProduceCard extends ConsumerWidget {
                   crop.cropName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: isOut ? Colors.grey.shade600 : AppTheme.textDark,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -285,41 +407,86 @@ class _ProduceCard extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
+                const SizedBox(height: 4),
+
+                // Live Stock Display
+                Text(
+                  isOut
+                      ? 'Out of Stock'
+                      : 'Stock: ${crop.quantityQuintals} Qtl (${crop.availableKg.toInt()} kg)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isOut
+                        ? Colors.red.shade700
+                        : (isLow ? Colors.orange.shade800 : AppTheme.primaryGreen),
+                  ),
+                ),
                 const SizedBox(height: 6),
+
                 Row(
                   children: [
                     Text(
                       '₹${crop.pricePerKg.toStringAsFixed(1)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 15,
-                        color: AppTheme.primaryGreen,
+                        color: isOut ? Colors.grey.shade500 : AppTheme.primaryGreen,
                       ),
                     ),
                     const Text(' /kg', style: TextStyle(fontSize: 11, color: Colors.grey)),
                   ],
                 ),
                 const SizedBox(height: 8),
+
                 SizedBox(
                   width: double.infinity,
                   height: 32,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      backgroundColor: AppTheme.primaryGreen,
-                    ),
-                    onPressed: () {
-                      ref.read(buyerProvider.notifier).addToCart(crop, quantityKg: 50);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Added 50 kg of ${crop.cropName} to cart!'),
-                          duration: const Duration(seconds: 1),
-                          behavior: SnackBarBehavior.floating,
+                  child: isOut
+                      ? ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            backgroundColor: Colors.grey.shade300,
+                            elevation: 0,
+                          ),
+                          onPressed: null,
+                          child: Text(
+                            'Out of Stock',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      : ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            backgroundColor: AppTheme.primaryGreen,
+                          ),
+                          onPressed: () {
+                            final added = ref.read(buyerProvider.notifier).addToCart(crop, quantityKg: 50);
+                            if (added) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Added 50 kg of ${crop.cropName} to cart!'),
+                                  duration: const Duration(seconds: 1),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('${crop.cropName} is currently out of stock!'),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                          child: const Text('Add 50 kg', style: TextStyle(fontSize: 12)),
                         ),
-                      );
-                    },
-                    child: const Text('Add 50 kg', style: TextStyle(fontSize: 12)),
-                  ),
                 ),
               ],
             ),

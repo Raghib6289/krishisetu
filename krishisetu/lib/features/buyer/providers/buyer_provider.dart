@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/websocket_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../farmer/models/crop_item.dart';
 import '../models/cart_item.dart';
@@ -11,6 +13,8 @@ class BuyerState {
   final String selectedCategory;
   final String searchQuery;
   final String? lastPlacedOrderId;
+  final bool isLiveConnected;
+  final String? lastLiveEventMessage;
 
   const BuyerState({
     this.catalog = const [],
@@ -20,6 +24,8 @@ class BuyerState {
     this.selectedCategory = 'All',
     this.searchQuery = '',
     this.lastPlacedOrderId,
+    this.isLiveConnected = true,
+    this.lastLiveEventMessage,
   });
 
   double get cartSubtotal {
@@ -40,6 +46,11 @@ class BuyerState {
 
   double get finalTotal => cartSubtotal - bulkDiscount;
 
+  // Check if any item in cart has been depleted by other concurrent buyers
+  bool get hasOutOfStockCartItems {
+    return cartItems.any((i) => i.crop.isOutOfStock || (i.crop.availableKg < i.quantityKg));
+  }
+
   BuyerState copyWith({
     List<CropItem>? catalog,
     List<CartItemModel>? cartItems,
@@ -48,6 +59,8 @@ class BuyerState {
     String? selectedCategory,
     String? searchQuery,
     String? lastPlacedOrderId,
+    bool? isLiveConnected,
+    String? lastLiveEventMessage,
   }) {
     return BuyerState(
       catalog: catalog ?? this.catalog,
@@ -57,15 +70,91 @@ class BuyerState {
       selectedCategory: selectedCategory ?? this.selectedCategory,
       searchQuery: searchQuery ?? this.searchQuery,
       lastPlacedOrderId: lastPlacedOrderId ?? this.lastPlacedOrderId,
+      isLiveConnected: isLiveConnected ?? this.isLiveConnected,
+      lastLiveEventMessage: lastLiveEventMessage ?? this.lastLiveEventMessage,
     );
   }
 }
 
 class BuyerNotifier extends StateNotifier<BuyerState> {
   final Ref _ref;
+  StreamSubscription<InventoryEvent>? _inventorySub;
+  StreamSubscription<bool>? _connectionSub;
 
   BuyerNotifier(this._ref) : super(const BuyerState()) {
     loadCatalog();
+    _subscribeToLiveInventory();
+  }
+
+  void _subscribeToLiveInventory() {
+    final wsService = InventoryWebSocketService();
+
+    _connectionSub = wsService.connectionStatusStream.listen((status) {
+      state = state.copyWith(isLiveConnected: status);
+    });
+
+    _inventorySub = wsService.inventoryStream.listen((event) {
+      _handleLiveInventoryEvent(event);
+    });
+  }
+
+  void _handleLiveInventoryEvent(InventoryEvent event) {
+    if (event.type == 'CROP_ADDED' && event.crop != null) {
+      final newCrop = CropItem.fromJson(event.crop!);
+      // Avoid duplicate if already in catalog
+      if (!state.catalog.any((c) => c.id == newCrop.id)) {
+        state = state.copyWith(
+          catalog: [newCrop, ...state.catalog],
+          lastLiveEventMessage: '🌱 Just Listed: ${newCrop.cropName} (${newCrop.quantityQuintals} Qtl)',
+        );
+      }
+    } else if (event.type == 'STOCK_UPDATED' || event.type == 'RESTOCKED' || event.type == 'CROP_UPDATED') {
+      final targetId = event.cropId;
+      if (targetId == null) return;
+
+      final updatedCatalog = state.catalog.map((crop) {
+        if (crop.id == targetId) {
+          final newQty = event.newQuantityQuintals ?? crop.quantityQuintals;
+          final newStatus = event.status ?? (newQty <= 0.001 ? 'OUT_OF_STOCK' : (newQty <= 2.0 ? 'LOW_STOCK' : 'AVAILABLE'));
+          return crop.copyWith(
+            quantityQuintals: newQty,
+            status: newStatus,
+          );
+        }
+        return crop;
+      }).toList();
+
+      // Also update any matching items in the cart
+      final updatedCart = state.cartItems.map((cartItem) {
+        if (cartItem.crop.id == targetId) {
+          final newQty = event.newQuantityQuintals ?? cartItem.crop.quantityQuintals;
+          final newStatus = event.status ?? (newQty <= 0.001 ? 'OUT_OF_STOCK' : (newQty <= 2.0 ? 'LOW_STOCK' : 'AVAILABLE'));
+          return CartItemModel(
+            crop: cartItem.crop.copyWith(
+              quantityQuintals: newQty,
+              status: newStatus,
+            ),
+            quantityKg: cartItem.quantityKg,
+          );
+        }
+        return cartItem;
+      }).toList();
+
+      state = state.copyWith(
+        catalog: updatedCatalog,
+        cartItems: updatedCart,
+        lastLiveEventMessage: event.message,
+      );
+    } else if (event.type == 'CROP_DELETED') {
+      final targetId = event.cropId;
+      if (targetId != null) {
+        state = state.copyWith(
+          catalog: state.catalog.where((c) => c.id != targetId).toList(),
+          cartItems: state.cartItems.where((c) => c.crop.id != targetId).toList(),
+          lastLiveEventMessage: 'Produce listing #$targetId was removed.',
+        );
+      }
+    }
   }
 
   Future<void> loadCatalog() async {
@@ -93,17 +182,29 @@ class BuyerNotifier extends StateNotifier<BuyerState> {
     loadCatalog();
   }
 
-  void addToCart(CropItem crop, {int quantityKg = 50}) {
+  bool addToCart(CropItem crop, {int quantityKg = 50}) {
+    if (crop.isOutOfStock) return false;
+
     final existingIndex = state.cartItems.indexWhere((i) => i.crop.id == crop.id);
     final updatedCart = List<CartItemModel>.from(state.cartItems);
 
     if (existingIndex >= 0) {
-      updatedCart[existingIndex].quantityKg += quantityKg;
+      final currentTotal = updatedCart[existingIndex].quantityKg + quantityKg;
+      // Cap at available stock
+      if (currentTotal > crop.availableKg) {
+        updatedCart[existingIndex].quantityKg = crop.availableKg.toInt();
+      } else {
+        updatedCart[existingIndex].quantityKg = currentTotal;
+      }
     } else {
-      updatedCart.add(CartItemModel(crop: crop, quantityKg: quantityKg));
+      final clampedQty = (quantityKg > crop.availableKg) ? crop.availableKg.toInt() : quantityKg;
+      if (clampedQty > 0) {
+        updatedCart.add(CartItemModel(crop: crop, quantityKg: clampedQty));
+      }
     }
 
     state = state.copyWith(cartItems: updatedCart);
+    return true;
   }
 
   void updateQuantity(String cropId, int newQuantity) {
@@ -113,7 +214,8 @@ class BuyerNotifier extends StateNotifier<BuyerState> {
       if (newQuantity <= 0) {
         updatedCart.removeAt(index);
       } else {
-        updatedCart[index].quantityKg = newQuantity;
+        final available = updatedCart[index].crop.availableKg.toInt();
+        updatedCart[index].quantityKg = (newQuantity > available && available > 0) ? available : newQuantity;
       }
       state = state.copyWith(cartItems: updatedCart);
     }
@@ -128,6 +230,11 @@ class BuyerNotifier extends StateNotifier<BuyerState> {
     required double deliveryLat,
     required double deliveryLng,
   }) async {
+    if (state.hasOutOfStockCartItems) {
+      state = state.copyWith(errorMessage: 'Please adjust or remove out-of-stock items before checkout.');
+      return null;
+    }
+
     state = state.copyWith(isLoading: true);
     try {
       final user = _ref.read(authProvider).user;
@@ -159,8 +266,16 @@ class BuyerNotifier extends StateNotifier<BuyerState> {
       return null;
     }
   }
+
+  @override
+  void dispose() {
+    _inventorySub?.cancel();
+    _connectionSub?.cancel();
+    super.dispose();
+  }
 }
 
 final buyerProvider = StateNotifierProvider<BuyerNotifier, BuyerState>((ref) {
   return BuyerNotifier(ref);
 });
+

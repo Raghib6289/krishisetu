@@ -50,6 +50,62 @@ class CropItem {
     );
   }
 
+  bool get isOutOfStock => status == 'OUT_OF_STOCK' || quantityQuintals <= 0.001;
+  bool get isLowStock => !isOutOfStock && quantityQuintals <= 2.0;
+  double get availableKg => quantityQuintals * 100.0;
+
+  int get daysSinceHarvest {
+    try {
+      final parsed = DateTime.parse(harvestDate);
+      final diff = DateTime.now().difference(parsed).inDays;
+      return diff < 0 ? 0 : diff;
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  String get freshnessLabel {
+    final days = daysSinceHarvest;
+    if (days == 0) return 'Harvested Today • Prime Fresh';
+    if (days <= 2) return 'Harvested ${days}d ago • Fresh';
+    if (days <= 5) return 'Harvested ${days}d ago • Good';
+    return 'Harvested ${days}d ago • Sell Soon';
+  }
+
+  CropItem copyWith({
+    String? id,
+    String? farmerId,
+    String? farmerName,
+    String? farmerPhone,
+    String? cropName,
+    String? category,
+    double? quantityQuintals,
+    double? pricePerKg,
+    String? grade,
+    String harvestDate = '',
+    String? location,
+    String? imageUrl,
+    double? mandiPriceComparison,
+    String? status,
+  }) {
+    return CropItem(
+      id: id ?? this.id,
+      farmerId: farmerId ?? this.farmerId,
+      farmerName: farmerName ?? this.farmerName,
+      farmerPhone: farmerPhone ?? this.farmerPhone,
+      cropName: cropName ?? this.cropName,
+      category: category ?? this.category,
+      quantityQuintals: quantityQuintals ?? this.quantityQuintals,
+      pricePerKg: pricePerKg ?? this.pricePerKg,
+      grade: grade ?? this.grade,
+      harvestDate: harvestDate.isNotEmpty ? harvestDate : this.harvestDate,
+      location: location ?? this.location,
+      imageUrl: imageUrl ?? this.imageUrl,
+      mandiPriceComparison: mandiPriceComparison ?? this.mandiPriceComparison,
+      status: status ?? this.status,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'farmer_id': farmerId,
@@ -67,3 +123,4 @@ class CropItem {
         'status': status,
       };
 }
+

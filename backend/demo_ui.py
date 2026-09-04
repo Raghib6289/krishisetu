@@ -144,10 +144,16 @@ DEMO_HTML = """
         <div class="brand-sub">Smart India Hackathon 2026 • Problem 26033 • Full-Stack Live Validation</div>
       </div>
     </div>
-    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; background: rgba(0,0,0,0.2); padding: 6px 14px; border-radius: 20px;">
-      <span class="live-dot"></span> Backend: <strong>ONLINE (:8000)</strong>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div id="inv-ws-indicator" style="display: flex; align-items: center; gap: 6px; font-size: 12px; background: rgba(0,0,0,0.3); padding: 6px 14px; border-radius: 20px;">
+        <span class="live-dot" style="background:#00e676;"></span> <span id="inv-ws-text">Inventory WS: <strong>CONNECTING...</strong></span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; background: rgba(0,0,0,0.2); padding: 6px 14px; border-radius: 20px;">
+        <span class="live-dot"></span> Backend: <strong>ONLINE (:8000)</strong>
+      </div>
     </div>
   </div>
+  <div id="live-toast-box" style="position: fixed; top: 80px; right: 24px; z-index: 99999; display: flex; flex-direction: column; gap: 10px; max-width: 360px;"></div>
 
   <div class="role-bar">
     <span style="font-size: 13px; color: var(--muted); font-weight: 600;">Switch Portal View:</span>
@@ -353,50 +359,195 @@ DEMO_HTML = """
       };
     }
 
+    let invSocket = null;
+
+    function showLiveToast(title, body, isAlert = false) {
+      const box = document.getElementById('live-toast-box');
+      if (!box) return;
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        background: ${isAlert ? '#ffebee' : '#ffffff'};
+        border-left: 5px solid ${isAlert ? '#d32f2f' : '#2e7d32'};
+        padding: 12px 16px;
+        border-radius: 10px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+        animation: slideIn 0.3s ease;
+        font-size: 13px;
+        color: #1a1a1a;
+      `;
+      toast.innerHTML = `
+        <div style="font-weight: 800; color: ${isAlert ? '#c62828' : '#1b5e20'}; margin-bottom: 2px;">${title}</div>
+        <div style="font-size: 12px; color: #424242;">${body}</div>
+      `;
+      box.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    function initInventoryWebSocket() {
+      const loc = window.location;
+      const wsUri = (loc.protocol === "https:" ? "wss:" : "ws:") + "//" + loc.host + "/ws/inventory";
+      invSocket = new WebSocket(wsUri);
+
+      invSocket.onopen = () => {
+        const text = document.getElementById('inv-ws-text');
+        if (text) text.innerHTML = 'Inventory WS: <strong>CONNECTED</strong>';
+      };
+
+      invSocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[Inventory WebSocket]', data);
+
+          if (data.type === 'CROP_ADDED') {
+            showLiveToast('🌱 New Produce Listed!', `${data.crop.crop_name} (${data.crop.quantity_quintals} Qtl by ${data.crop.farmer_name})`);
+            loadCrops();
+          } else if (data.type === 'STOCK_UPDATED') {
+            const isDepleted = data.is_out_of_stock;
+            showLiveToast(
+              isDepleted ? '🚨 Out of Stock Alert!' : '⚡ Live Stock Decrement',
+              `${data.buyer_name} bought ${data.purchased_kg} kg of ${data.crop_name}. Remaining: ${data.new_quantity_quintals} Qtl`,
+              isDepleted
+            );
+
+            // Update in-memory item
+            const crop = cropsData.find(c => c.id === data.crop_id);
+            if (crop) {
+              crop.quantity_quintals = data.new_quantity_quintals;
+              crop.status = data.status;
+            }
+            renderProduceCards();
+          } else if (data.type === 'RESTOCKED') {
+            showLiveToast('📦 Produce Restocked!', `Farmer restocked ${data.crop ? data.crop.crop_name : 'Produce'} (New: ${data.new_quantity_quintals} Qtl)`);
+            loadCrops();
+          } else if (data.type === 'CROP_UPDATED') {
+            loadCrops();
+          } else if (data.type === 'CROP_DELETED') {
+            loadCrops();
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      invSocket.onclose = () => {
+        const text = document.getElementById('inv-ws-text');
+        if (text) text.innerHTML = 'Inventory WS: <span style="color:#ff8a80;">RECONNECTING...</span>';
+        setTimeout(initInventoryWebSocket, 3000);
+      };
+    }
+
     // Load Crops
     async function loadCrops() {
       const res = await fetch('/api/crops');
       cropsData = await res.json();
-      
+      renderProduceCards();
+    }
+
+    function renderProduceCards() {
       document.getElementById('farmer-produce-count').textContent = cropsData.length + ' Crops';
 
       // Render Farmer Cards
       const farmerGrid = document.getElementById('farmer-crops-grid');
-      farmerGrid.innerHTML = cropsData.map(c => `
-        <div class="produce-card">
+      farmerGrid.innerHTML = cropsData.map(c => {
+        const isDepleted = c.quantity_quintals <= 0.001 || c.status === 'OUT_OF_STOCK';
+        const isLow = c.quantity_quintals <= 2.0 && !isDepleted;
+        
+        let statusBadge = `<span style="background: #e8f5e9; color: #2e7d32; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px;">Available</span>`;
+        if (isDepleted) {
+          statusBadge = `<span style="background: #ffebee; color: #c62828; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px;">OUT OF STOCK</span>`;
+        } else if (isLow) {
+          statusBadge = `<span style="background: #fff3e0; color: #e65100; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 6px;">LOW STOCK (${c.quantity_quintals} Qtl)</span>`;
+        }
+
+        return `
+        <div class="produce-card" style="${isDepleted ? 'opacity: 0.75; border-color: #ef9a9a;' : ''}">
           <img src="${c.image_url}" class="produce-img" onerror="this.src='https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600'">
           <div class="produce-body">
             <div>
-              <div class="produce-name">${c.crop_name}</div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                <div class="produce-name">${c.crop_name}</div>
+                ${statusBadge}
+              </div>
               <div style="font-size: 11px; color: var(--muted);">${c.location} • Grade ${c.grade}</div>
+              <div style="font-size: 12px; margin-top: 4px; font-weight: 600; color: #37474f;">
+                Stock: <strong>${c.quantity_quintals} Qtl</strong> (${Math.round(c.quantity_quintals * 100)} kg)
+              </div>
             </div>
-            <div style="margin-top: 10px;">
-              <span class="produce-price">₹${c.price_per_kg}</span> /kg
-              <span class="produce-mandi">Mandi: ₹${c.mandi_price_comparison}</span>
+            <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span class="produce-price">₹${c.price_per_kg}</span> /kg
+                <span class="produce-mandi">Mandi: ₹${c.mandi_price_comparison}</span>
+              </div>
+              <button class="btn btn-accent" style="padding: 5px 10px; font-size: 11px;" onclick="quickRestock('${c.id}', 10)">+10 Qtl Restock</button>
             </div>
           </div>
         </div>
-      `).join('');
+        `;
+      }).join('');
 
       // Render Buyer Cards
       const buyerGrid = document.getElementById('buyer-crops-grid');
-      buyerGrid.innerHTML = cropsData.map(c => `
-        <div class="produce-card">
-          <img src="${c.image_url}" class="produce-img" onerror="this.src='https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600'">
+      buyerGrid.innerHTML = cropsData.map(c => {
+        const isDepleted = c.quantity_quintals <= 0.001 || c.status === 'OUT_OF_STOCK';
+        const isLow = c.quantity_quintals <= 2.0 && !isDepleted;
+
+        return `
+        <div class="produce-card" style="${isDepleted ? 'border: 1.5px solid #ef5350;' : ''}">
+          <div style="position: relative;">
+            <img src="${c.image_url}" class="produce-img" onerror="this.src='https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600'">
+            ${isDepleted ? `
+              <div style="position: absolute; top: 10px; left: 10px; background: #d32f2f; color: white; font-weight: 900; font-size: 10px; padding: 3px 8px; border-radius: 4px; letter-spacing: 0.5px;">
+                OUT OF STOCK
+              </div>
+            ` : (isLow ? `
+              <div style="position: absolute; top: 10px; left: 10px; background: #f57f17; color: white; font-weight: 900; font-size: 10px; padding: 3px 8px; border-radius: 4px;">
+                ONLY ${Math.round(c.quantity_quintals * 100)} KG LEFT
+              </div>
+            ` : '')}
+          </div>
           <div class="produce-body">
             <div>
               <div class="produce-name">${c.crop_name}</div>
               <div style="font-size: 11px; color: var(--muted);">Direct Farmer: ${c.farmer_name}</div>
+              <div style="font-size: 11px; margin-top: 4px; font-weight: 600; color: ${isDepleted ? '#d32f2f' : '#2e7d32'};">
+                ${isDepleted ? 'Depleted / Waiting for Farmer Harvest' : `Available: ${c.quantity_quintals} Qtl (${Math.round(c.quantity_quintals * 100)} kg)`}
+              </div>
             </div>
             <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
               <div>
                 <span class="produce-price">₹${c.price_per_kg}</span> /kg
               </div>
-              <button class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;" onclick="addToCart('${c.id}')">+ 50kg</button>
+              ${isDepleted ? `
+                <button class="btn" style="padding: 6px 12px; font-size: 12px; background: #e0e0e0; color: #757575; cursor: not-allowed;" disabled>Out of Stock</button>
+              ` : `
+                <button class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;" onclick="addToCart('${c.id}')">+ 50kg</button>
+              `}
             </div>
           </div>
         </div>
-      `).join('');
+        `;
+      }).join('');
+    }
+
+    async function quickRestock(cropId, amt) {
+      try {
+        const res = await fetch(`/api/crops/${cropId}/quick-stock`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add', amount_quintals: amt })
+        });
+        if (res.ok) {
+          showLiveToast('Produce Restocked', `Added ${amt} Quintals directly to listing!`);
+          loadCrops();
+        }
+      } catch (e) {
+        alert('Restock error: ' + e.message);
+      }
     }
 
     // Add Crop Form Handler
@@ -416,21 +567,27 @@ DEMO_HTML = """
         image_url: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600'
       };
 
-      await fetch('/api/crops', {
+      const res = await fetch('/api/crops', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCrop)
       });
 
-      alert('Crop listed directly on KrishiSetu!');
-      e.target.reset();
-      loadCrops();
+      if (res.ok) {
+        showLiveToast('Produce Listed Live!', `${newCrop.crop_name} is now immediately visible to all active buyers.`);
+        e.target.reset();
+        loadCrops();
+      }
     }
 
     // Cart Handlers
     function addToCart(cropId) {
       const item = cropsData.find(c => c.id === cropId);
       if (item) {
+        if (item.quantity_quintals <= 0.001 || item.status === 'OUT_OF_STOCK') {
+          alert('Sorry, this produce is currently OUT OF STOCK!');
+          return;
+        }
         cart.push(item);
         renderCart();
       }
@@ -459,14 +616,49 @@ DEMO_HTML = """
       document.getElementById('cart-total').textContent = '₹' + total;
     }
 
-    function simulateCheckout() {
+    async function simulateCheckout() {
       if (cart.length === 0) {
         alert('Please add crops to cart first!');
         return;
       }
-      alert('Razorpay Payment Successful! Order assigned to driver Santosh Shinde. Watch the live vehicle moving on the map above.');
-      cart = [];
-      renderCart();
+
+      const orderPayload = {
+        buyer_id: 'usr_buyer_202',
+        buyer_name: 'Reliance Fresh Retail Hub',
+        buyer_phone: '+91 98220 11223',
+        delivery_address: 'Vashi APMC Sector 19, Navi Mumbai',
+        delivery_lat: 19.0760,
+        delivery_lng: 72.9980,
+        items: cart.map(c => ({
+          listing_id: c.id,
+          crop_name: c.crop_name,
+          farmer_name: c.farmer_name,
+          quantity_kg: 50.0,
+          price_per_kg: c.price_per_kg
+        })),
+        payment_method: 'Razorpay Instant Settlement',
+        payment_id: 'pay_demo_' + Date.now()
+      };
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload)
+        });
+
+        if (res.ok) {
+          const order = await res.json();
+          alert(`✅ Razorpay Payment Verified! Order #${order.id} Placed!\n\nNotice how the stock decremented in Real Time across all screens! If quantity hits 0, it dynamically switches to OUT OF STOCK!`);
+          cart = [];
+          renderCart();
+        } else {
+          const err = await res.json();
+          alert('Checkout failed: ' + (err.detail || 'Stock unavailable'));
+        }
+      } catch (e) {
+        alert('Checkout error: ' + e.message);
+      }
     }
 
     // Fetch ARIMA Forecast
@@ -610,6 +802,7 @@ DEMO_HTML = """
     window.onload = () => {
       initMaps();
       initWebSocket();
+      initInventoryWebSocket();
       loadCrops();
       fetchForecast();
       loadOrToolsRoute();

@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.database import init_db
 from backend.routers import auth, crops, orders, forecast, routes, upload
 from backend.services.tracking_ws import tracking_manager
+from backend.services.inventory_ws import inventory_manager
 from backend.demo_ui import DEMO_HTML
 
 logging.basicConfig(level=logging.INFO)
@@ -75,7 +76,8 @@ def health_check():
             "forecast": "/api/forecast?crop=tomato&days=7",
             "route_optimization": "/api/routes/optimize",
             "upload_image": "/api/upload",
-            "live_websocket": "/ws/tracking/{order_id}"
+            "live_websocket": "/ws/tracking/{order_id}",
+            "live_inventory_websocket": "/ws/inventory"
         }
     }
 
@@ -83,6 +85,31 @@ def health_check():
 def get_interactive_demo():
     """Renders full interactive UI for Farmer, Buyer, and Driver with live AI predictions and WebSockets."""
     return DEMO_HTML
+
+@app.websocket("/ws/inventory")
+async def websocket_inventory_endpoint(websocket: WebSocket):
+    """
+    Real-time multi-tenant marketplace inventory broadcast channel:
+    - Broadcasts CROP_ADDED when farmers list produce.
+    - Broadcasts STOCK_UPDATED & OUT_OF_STOCK live when buyers purchase produce.
+    - Broadcasts CROP_UPDATED & RESTOCKED when farmers adjust prices/stock.
+    """
+    await inventory_manager.connect(websocket)
+    try:
+        while True:
+            data_text = await websocket.receive_text()
+            try:
+                data = json.loads(data_text)
+                # Allow bidirectional messages such as ping or client queries
+                if data.get("action") == "ping":
+                    await websocket.send_text(json.dumps({"type": "PONG", "timestamp": data.get("timestamp")}))
+            except json.JSONDecodeError:
+                pass
+    except WebSocketDisconnect:
+        inventory_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error in /ws/inventory: {e}")
+        inventory_manager.disconnect(websocket)
 
 @app.websocket("/ws/tracking/{order_id}")
 async def websocket_tracking_endpoint(websocket: WebSocket, order_id: str):
