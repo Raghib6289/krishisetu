@@ -5,6 +5,12 @@
 Thumbs.db
 ehthumbs.db
 
+# Environment & Credentials (KEEP NEON CREDENTIALS SECURE)
+.env
+.env.*
+*.env
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]

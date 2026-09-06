@@ -2,114 +2,387 @@ import os
 import sqlite3
 import json
 import uuid
+import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
 
+logger = logging.getLogger("krishisetu_db")
+
+# Load environment variables from root .env if present
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_ENV_PATH = os.path.join(_ROOT, ".env")
+if os.path.exists(_ENV_PATH):
+    load_dotenv(_ENV_PATH)
+else:
+    load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 DB_FILE = os.path.join(os.path.dirname(__file__), "krishisetu.db")
 
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+try:
+    import psycopg2
+    import psycopg2.extras
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
+
+
+def is_postgres_configured() -> bool:
+    """Returns True if a valid PostgreSQL DATABASE_URL is configured and psycopg2 is installed."""
+    return bool(
+        DATABASE_URL
+        and (DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"))
+        and PSYCOPG2_AVAILABLE
+    )
+
+
+def get_db_info() -> Dict[str, Any]:
+    """Returns metadata about the active database engine."""
+    if is_postgres_configured():
+        return {
+            "engine": "PostgreSQL",
+            "provider": "Neon Serverless",
+            "configured": True
+        }
+    return {
+        "engine": "SQLite",
+        "provider": "Local File (krishisetu.db)",
+        "configured": False
+    }
+
+
+class PostgresCursorWrapper:
+    """
+    Transparent proxy around psycopg2.extras.DictCursor that auto-translates
+    SQLite '?' parameter placeholders to PostgreSQL '%s' placeholders.
+    """
+    def __init__(self, raw_cursor):
+        self._cursor = raw_cursor
+
+    def execute(self, query: str, params=None):
+        if "?" in query:
+            query = query.replace("?", "%s")
+        if params is not None:
+            return self._cursor.execute(query, params)
+        return self._cursor.execute(query)
+
+    def executemany(self, query: str, seq_of_params):
+        if "?" in query:
+            query = query.replace("?", "%s")
+        return self._cursor.executemany(query, seq_of_params)
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cursor.fetchmany(size) if size else self._cursor.fetchmany()
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+    @property
+    def description(self):
+        return self._cursor.description
+
+    def close(self):
+        return self._cursor.close()
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class PostgresConnectionWrapper:
+    """
+    Context manager and connection wrapper for psycopg2 connections.
+    Automatically manages commits, rollbacks, and connection closing.
+    """
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+        self._closed = False
+
+    def cursor(self):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        return PostgresCursorWrapper(cur)
+
+    def commit(self):
+        if not self._closed and not self._conn.closed:
+            self._conn.commit()
+
+    def rollback(self):
+        if not self._closed and not self._conn.closed:
+            self._conn.rollback()
+
+    def close(self):
+        if not self._closed and not self._conn.closed:
+            self._conn.close()
+            self._closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if exc_type is not None:
+                self.rollback()
+            else:
+                self.commit()
+        finally:
+            self.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+class SQLiteConnectionWrapper:
+    """
+    Context manager and connection wrapper for SQLite connections.
+    """
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+        self._closed = False
+
+    def cursor(self):
+        return self._conn.cursor()
+
+    def commit(self):
+        if not self._closed:
+            self._conn.commit()
+
+    def rollback(self):
+        if not self._closed:
+            self._conn.rollback()
+
+    def close(self):
+        if not self._closed:
+            self._conn.close()
+            self._closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if exc_type is not None:
+                self.rollback()
+            else:
+                self.commit()
+        finally:
+            self.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def get_connection():
+    """
+    Returns an active database connection wrapper.
+    Connects to Neon PostgreSQL if DATABASE_URL is configured,
+    with automatic graceful fallback to local SQLite.
+    """
+    if is_postgres_configured():
+        try:
+            raw_conn = psycopg2.connect(DATABASE_URL)
+            return PostgresConnectionWrapper(raw_conn)
+        except Exception as e:
+            logger.warning(f"Failed to connect to Neon PostgreSQL: {e}. Falling back to local SQLite.")
+
+    # SQLite fallback
+    raw_conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    raw_conn.row_factory = sqlite3.Row
+    return SQLiteConnectionWrapper(raw_conn)
+
 
 def init_db():
     """Create all necessary tables and seed default realistic data if empty."""
+    is_pg = is_postgres_configured()
+
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # 1. Users Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
-                phone TEXT NOT NULL,
-                user_type TEXT NOT NULL,
-                location TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
+        if is_pg:
+            # PostgreSQL Schema
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    salt TEXT NOT NULL,
+                    phone TEXT NOT NULL,
+                    user_type TEXT NOT NULL,
+                    location TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+            """)
 
-        # 2. Crops Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS crops (
-                id TEXT PRIMARY KEY,
-                farmer_id TEXT NOT NULL,
-                farmer_name TEXT NOT NULL,
-                farmer_phone TEXT NOT NULL,
-                crop_name TEXT NOT NULL,
-                category TEXT NOT NULL,
-                quantity_quintals REAL NOT NULL,
-                price_per_kg REAL NOT NULL,
-                grade TEXT NOT NULL,
-                harvest_date TEXT NOT NULL,
-                location TEXT NOT NULL,
-                image_url TEXT NOT NULL,
-                mandi_price_comparison REAL NOT NULL,
-                status TEXT NOT NULL DEFAULT 'AVAILABLE',
-                created_at TEXT NOT NULL
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS crops (
+                    id TEXT PRIMARY KEY,
+                    farmer_id TEXT NOT NULL,
+                    farmer_name TEXT NOT NULL,
+                    farmer_phone TEXT NOT NULL,
+                    crop_name TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    quantity_quintals DOUBLE PRECISION NOT NULL,
+                    price_per_kg DOUBLE PRECISION NOT NULL,
+                    grade TEXT NOT NULL,
+                    harvest_date TEXT NOT NULL,
+                    location TEXT NOT NULL,
+                    image_url TEXT NOT NULL,
+                    mandi_price_comparison DOUBLE PRECISION NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'AVAILABLE',
+                    created_at TEXT NOT NULL
+                );
+            """)
 
-        # 3. Orders Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS orders (
-                id TEXT PRIMARY KEY,
-                buyer_id TEXT NOT NULL,
-                buyer_name TEXT NOT NULL,
-                buyer_phone TEXT NOT NULL,
-                delivery_address TEXT NOT NULL,
-                delivery_lat REAL NOT NULL,
-                delivery_lng REAL NOT NULL,
-                items_json TEXT NOT NULL,
-                total_amount REAL NOT NULL,
-                status TEXT NOT NULL DEFAULT 'ASSIGNED',
-                driver_id TEXT,
-                driver_name TEXT,
-                payment_id TEXT,
-                payment_status TEXT NOT NULL DEFAULT 'PAID',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS orders (
+                    id TEXT PRIMARY KEY,
+                    buyer_id TEXT NOT NULL,
+                    buyer_name TEXT NOT NULL,
+                    buyer_phone TEXT NOT NULL,
+                    delivery_address TEXT NOT NULL,
+                    delivery_lat DOUBLE PRECISION NOT NULL,
+                    delivery_lng DOUBLE PRECISION NOT NULL,
+                    items_json TEXT NOT NULL,
+                    total_amount DOUBLE PRECISION NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'ASSIGNED',
+                    driver_id TEXT,
+                    driver_name TEXT,
+                    payment_id TEXT,
+                    payment_status TEXT NOT NULL DEFAULT 'PAID',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+            """)
 
-        # 4. Tracking Pings Table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tracking_pings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                order_id TEXT NOT NULL,
-                driver_id TEXT NOT NULL,
-                latitude REAL NOT NULL,
-                longitude REAL NOT NULL,
-                speed_kmh REAL NOT NULL,
-                battery_pct REAL NOT NULL,
-                timestamp TEXT NOT NULL
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tracking_pings (
+                    id SERIAL PRIMARY KEY,
+                    order_id TEXT NOT NULL,
+                    driver_id TEXT NOT NULL,
+                    latitude DOUBLE PRECISION NOT NULL,
+                    longitude DOUBLE PRECISION NOT NULL,
+                    speed_kmh DOUBLE PRECISION NOT NULL,
+                    battery_pct DOUBLE PRECISION NOT NULL,
+                    timestamp TEXT NOT NULL
+                );
+            """)
 
-        # 5. OTPs Table for Mobile Number Verification
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS otps (
-                phone TEXT PRIMARY KEY,
-                otp TEXT NOT NULL,
-                user_type TEXT,
-                name TEXT,
-                created_at REAL NOT NULL,
-                expires_at REAL NOT NULL
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS otps (
+                    phone TEXT PRIMARY KEY,
+                    otp TEXT NOT NULL,
+                    user_type TEXT,
+                    name TEXT,
+                    created_at DOUBLE PRECISION NOT NULL,
+                    expires_at DOUBLE PRECISION NOT NULL
+                );
+            """)
+
+        else:
+            # SQLite Schema
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    salt TEXT NOT NULL,
+                    phone TEXT NOT NULL,
+                    user_type TEXT NOT NULL,
+                    location TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS crops (
+                    id TEXT PRIMARY KEY,
+                    farmer_id TEXT NOT NULL,
+                    farmer_name TEXT NOT NULL,
+                    farmer_phone TEXT NOT NULL,
+                    crop_name TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    quantity_quintals REAL NOT NULL,
+                    price_per_kg REAL NOT NULL,
+                    grade TEXT NOT NULL,
+                    harvest_date TEXT NOT NULL,
+                    location TEXT NOT NULL,
+                    image_url TEXT NOT NULL,
+                    mandi_price_comparison REAL NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'AVAILABLE',
+                    created_at TEXT NOT NULL
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS orders (
+                    id TEXT PRIMARY KEY,
+                    buyer_id TEXT NOT NULL,
+                    buyer_name TEXT NOT NULL,
+                    buyer_phone TEXT NOT NULL,
+                    delivery_address TEXT NOT NULL,
+                    delivery_lat REAL NOT NULL,
+                    delivery_lng REAL NOT NULL,
+                    items_json TEXT NOT NULL,
+                    total_amount REAL NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'ASSIGNED',
+                    driver_id TEXT,
+                    driver_name TEXT,
+                    payment_id TEXT,
+                    payment_status TEXT NOT NULL DEFAULT 'PAID',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tracking_pings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id TEXT NOT NULL,
+                    driver_id TEXT NOT NULL,
+                    latitude REAL NOT NULL,
+                    longitude REAL NOT NULL,
+                    speed_kmh REAL NOT NULL,
+                    battery_pct REAL NOT NULL,
+                    timestamp TEXT NOT NULL
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS otps (
+                    phone TEXT PRIMARY KEY,
+                    otp TEXT NOT NULL,
+                    user_type TEXT,
+                    name TEXT,
+                    created_at REAL NOT NULL,
+                    expires_at REAL NOT NULL
+                );
+            """)
 
         conn.commit()
 
         # Seed data if tables are empty
         cursor.execute("SELECT COUNT(*) FROM users")
-        if cursor.fetchone()[0] == 0:
+        row = cursor.fetchone()
+        user_count = row[0] if row else 0
+        if user_count == 0:
+            logger.info("Database tables empty. Seeding realistic default marketplace data...")
             _seed_default_data(cursor)
             conn.commit()
+            logger.info("Default marketplace data seeded successfully.")
 
-def _seed_default_data(cursor: sqlite3.Cursor):
+
+def _seed_default_data(cursor):
     from backend.security import hash_password
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

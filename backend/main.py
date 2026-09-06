@@ -15,7 +15,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from backend.database import init_db
+from backend.database import init_db, get_db_info
 from backend.routers import auth, crops, orders, forecast, routes, upload
 from backend.services.tracking_ws import tracking_manager
 from backend.services.inventory_ws import inventory_manager
@@ -29,10 +29,10 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize SQLite database and seed initial data
-    logger.info("Initializing KrishiSetu SQLite database...")
+    db_info = get_db_info()
+    logger.info(f"Initializing KrishiSetu database [{db_info['engine']} via {db_info['provider']}]...")
     init_db()
-    logger.info("Database initialized successfully.")
+    logger.info(f"Database [{db_info['engine']}] initialized successfully.")
     yield
 
 app = FastAPI(
@@ -68,6 +68,7 @@ def health_check():
         "status": "online",
         "service": "KrishiSetu AI & Logistics Backend",
         "version": "1.0.0",
+        "database": get_db_info(),
         "auth_methods": ["mobile_otp", "jwt_token"],
         "endpoints": {
             "send_otp": "/api/auth/send-otp",

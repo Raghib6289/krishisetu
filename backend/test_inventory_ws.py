@@ -15,7 +15,13 @@ def run_server():
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="error")
 
 async def test_real_time_inventory():
-    time.sleep(2)
+    for attempt in range(15):
+        try:
+            r = requests.get(f"{BASE_HTTP}/", timeout=2)
+            if r.status_code == 200:
+                break
+        except Exception:
+            time.sleep(1)
     uri = f"{BASE_WS}/ws/inventory"
 
     print("\n--- 1. Connecting Consumer WebSocket to /ws/inventory ---")

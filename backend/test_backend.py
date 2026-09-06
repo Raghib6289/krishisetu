@@ -11,12 +11,19 @@ def run_server():
 
 def test_api():
     base_url = "http://127.0.0.1:8089"
-    time.sleep(2)
-    
+    # Wait for server to be ready
+    r = None
+    for attempt in range(15):
+        try:
+            r = requests.get(f"{base_url}/", timeout=2)
+            if r.status_code == 200:
+                break
+        except Exception:
+            time.sleep(1)
+
     print("\n--- 1. Testing Health Check ---")
-    r = requests.get(f"{base_url}/")
+    assert r is not None and r.status_code == 200, "Server failed to start in time"
     print("Health response:", r.json())
-    assert r.status_code == 200
 
     print("\n--- 2. Testing Unified Auth (Farmer Login) ---")
     login_payload = {"email": "farmer@krishisetu.com", "password": "pass123"}

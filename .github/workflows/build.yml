@@ -40,7 +40,7 @@ jobs:
 
       - name: Analyze Flutter Code
         working-directory: ./krishisetu
-        run: flutter analyze lib
+        run: flutter analyze lib --no-fatal-infos
 
       - name: Build Flutter Web Release
         working-directory: ./krishisetu

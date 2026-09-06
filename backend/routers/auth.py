@@ -42,8 +42,9 @@ def send_otp(req: SendOtpRequest):
 
     with get_connection() as conn:
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM otps WHERE phone = ?", (phone_clean,))
         cursor.execute(
-            """INSERT OR REPLACE INTO otps (phone, otp, user_type, name, created_at, expires_at)
+            """INSERT INTO otps (phone, otp, user_type, name, created_at, expires_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (phone_clean, otp, req.user_type or "farmer", req.name or "", now, expires_at)
         )
