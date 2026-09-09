@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import os
+import time
 import urllib.request
 import urllib.error
 
@@ -33,13 +34,13 @@ You are **KrishiSetu Sahayak (कृषिसेतु सहायक)**, a ded
    - Respond concisely and respectfully (Namaste / नमस्ते). Support English, Hindi, or Hinglish as used by the farmer.
 """
 
-MODELS_TO_TRY = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-pro"]
+MODELS_TO_TRY = ["gemini-3.1-flash-lite-preview", "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-pro-latest"]
 
 def generate_suggested_actions(user_msg: str) -> list:
     lower_msg = user_msg.lower()
     if "list" in lower_msg or "crop" in lower_msg or "sell" in lower_msg:
         return ["What are Grade A+ criteria?", "How does pricing compare to Mandi?", "How do buyers pay?"]
-    elif "price" in lower_msg or "forecast" in lower_msg or "arima" in lower_msg or "rate" in lower_msg:
+    elif any(k in lower_msg for k in ["price", "forecast", "arima", "rate", "rise", "fall", "potato", "tomato", "onion"]):
         return ["Check Tomato 7-day forecast", "How to set competitive price?", "How does escrow work?"]
     elif "pay" in lower_msg or "escrow" in lower_msg or "money" in lower_msg:
         return ["When is money released?", "How do drivers pick up crops?", "List another crop"]
@@ -150,12 +151,22 @@ class handler(BaseHTTPRequestHandler):
                                     break
                 except urllib.error.HTTPError as e:
                     err_body = e.read().decode('utf-8', errors='replace')
-                    last_err = f"HTTP {e.code}: {err_body[:120]}"
+                    last_err = f"HTTP {e.code} ({model}): {err_body[:120]}"
+                    if e.code == 429:
+                        time.sleep(2)  # Brief backoff before next model
+                    # 404 = model not available for this key — skip immediately
                 except Exception as e:
                     last_err = str(e)
 
             if not reply_text:
-                reply_text = "KrishiSetu Sahayak is temporarily experiencing high connectivity demand. For immediate platform assistance:\n• To list crops, use the 'Add Produce' button.\n• To view 7-day price trends, check the AI Demand Forecaster.\n• Payouts are protected via Escrow upon delivery confirmation."
+                reply_text = (
+                    "Namaste! Sahayak is currently unable to connect to the AI service.\n\n"
+                    "Quick help:\n"
+                    "• **List crops**: Use the '+ Add Produce' button on your dashboard.\n"
+                    "• **Price trends**: Check the AI Demand Forecaster card.\n"
+                    "• **Payments**: Funds are protected via Razorpay Escrow upon delivery.\n\n"
+                    "Please try again in a moment!"
+                )
 
             response_payload = {
                 "success": True,
