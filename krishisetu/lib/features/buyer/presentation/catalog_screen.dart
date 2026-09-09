@@ -31,18 +31,29 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     final authState = ref.watch(authProvider);
     final user = authState.user;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final int crossAxisCount = screenWidth > 1150
+        ? 4
+        : (screenWidth > 720 ? 3 : 2);
+    final double childAspectRatio = screenWidth > 1150
+        ? 0.72
+        : (screenWidth > 720 ? 0.68 : 0.64);
+
     return Scaffold(
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () => ref.read(buyerProvider.notifier).loadCatalog(),
-          color: AppTheme.primaryGreen,
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: KrishiHeader(
-                  title: 'Produce Marketplace',
-                  subtitle: user?.name ?? 'Reliance Fresh / BigBasket Hub',
-                  icon: Icons.storefront_rounded,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1200),
+            child: RefreshIndicator(
+              onRefresh: () => ref.read(buyerProvider.notifier).loadCatalog(),
+              color: AppTheme.primaryGreen,
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: KrishiHeader(
+                      title: 'Produce Marketplace',
+                      subtitle: user?.name ?? 'Reliance Fresh / BigBasket Hub',
+                      icon: Icons.storefront_rounded,
                   currentRole: UserRole.buyer,
                   onSwitchRole: () => showKrishiRoleSwitcher(context, ref),
                   onLogout: () {
@@ -253,11 +264,11 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      childAspectRatio: 0.64,
+                      childAspectRatio: childAspectRatio,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -274,6 +285,8 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
           ),
         ),
       ),
+    ),
+  ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/buyer/cart'),
         backgroundColor: AppTheme.primaryGreen,

@@ -7,6 +7,7 @@ import '../../auth/providers/auth_provider.dart';
 import '../../common/widgets/app_widgets.dart';
 import '../models/crop_item.dart';
 import '../providers/farmer_provider.dart';
+import 'krishi_assistant_button.dart';
 
 class FarmerDashboardScreen extends ConsumerWidget {
   const FarmerDashboardScreen({super.key});
@@ -210,69 +211,78 @@ class FarmerDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async {
-            await ref.read(farmerProvider.notifier).loadFarmerInventory();
-            await ref.read(farmerProvider.notifier).loadAnalytics();
-          },
-          color: AppTheme.primaryGreen,
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: KrishiHeader(
-                  title: 'Farmer Enterprise Portal',
-                  subtitle: user?.name ?? 'Ramesh Patil (Nashik)',
-                  icon: Icons.agriculture,
-                  currentRole: UserRole.farmer,
-                  onSwitchRole: () => showKrishiRoleSwitcher(context, ref),
-                  onLogout: () {
-                    ref.read(authProvider.notifier).logout();
-                    context.go('/login');
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: Stack(
+              children: [
+                RefreshIndicator(
+                  onRefresh: () async {
+                    await ref.read(farmerProvider.notifier).loadFarmerInventory();
+                    await ref.read(farmerProvider.notifier).loadAnalytics();
                   },
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Real-time WebSocket Live Status Chip
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: farmerState.isLiveConnected ? Colors.green.shade50 : Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: farmerState.isLiveConnected ? Colors.green.shade300 : Colors.orange.shade300,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: farmerState.isLiveConnected ? AppTheme.primaryGreen : Colors.orange,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              farmerState.isLiveConnected
-                                  ? 'Real-Time Inventory & Sales Broadcast Active'
-                                  : 'Reconnecting to Live Market Stream...',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: farmerState.isLiveConnected ? AppTheme.primaryGreen : Colors.orange.shade900,
-                              ),
-                            ),
-                          ],
+                  color: AppTheme.primaryGreen,
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: KrishiHeader(
+                          title: 'Farmer Enterprise Portal',
+                          subtitle: user?.name ?? 'Ramesh Patil (Nashik)',
+                          icon: Icons.agriculture,
+                          currentRole: UserRole.farmer,
+                          onSwitchRole: () => showKrishiRoleSwitcher(context, ref),
+                          onLogout: () {
+                            ref.read(authProvider.notifier).logout();
+                            context.go('/login');
+                          },
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Real-time WebSocket Live Status Chip with responsive truncation
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: farmerState.isLiveConnected ? Colors.green.shade50 : Colors.orange.shade50,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: farmerState.isLiveConnected ? Colors.green.shade300 : Colors.orange.shade300,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: farmerState.isLiveConnected ? AppTheme.primaryGreen : Colors.orange,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        farmerState.isLiveConnected
+                                            ? 'Real-Time Inventory & Sales Broadcast Active'
+                                            : 'Reconnecting to Live Market Stream...',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: farmerState.isLiveConnected ? AppTheme.primaryGreen : Colors.orange.shade900,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
 
                       // Real-time Live Sale Alert Banner
                       if (farmerState.recentSaleAlerts.isNotEmpty) ...[
@@ -289,7 +299,7 @@ class FarmerDashboardScreen extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.12),
+                                  color: Colors.black.withValues(alpha: 0.12),
                                   blurRadius: 6,
                                   offset: const Offset(0, 2),
                                 )
@@ -300,7 +310,7 @@ class FarmerDashboardScreen extends ConsumerWidget {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
+                                    color: Colors.white.withValues(alpha: 0.2),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
@@ -413,7 +423,7 @@ class FarmerDashboardScreen extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.teal.withOpacity(0.25),
+                                color: Colors.teal.withValues(alpha: 0.25),
                                 blurRadius: 8,
                                 offset: const Offset(0, 3),
                               )
@@ -424,7 +434,7 @@ class FarmerDashboardScreen extends ConsumerWidget {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
+                                  color: Colors.white.withValues(alpha: 0.2),
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(
@@ -735,15 +745,32 @@ class FarmerDashboardScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+
+                // Generous bottom spacer so inventory items are never covered
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 100),
+                ),
             ],
           ),
         ),
+
+        // Unobtrusive, compact side button for KrishiSetu Sahayak with leaf logo
+        const Positioned(
+          right: 12,
+          bottom: 85,
+          child: KrishiAssistantSideButton(),
+        ),
+      ],
+    ),
+  ),
+),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'add_crop_fab',
         onPressed: () => context.push('/farmer/add-crop'),
         backgroundColor: AppTheme.primaryGreen,
-        icon: const Icon(Icons.add_photo_alternate, color: Colors.white),
-        label: const Text('Add Crop', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        tooltip: 'Add Produce Listing',
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
     );
   }

@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database import init_db, get_db_info
-from backend.routers import auth, crops, orders, forecast, routes, upload
+from backend.routers import auth, crops, orders, forecast, routes, upload, chatbot
 from backend.services.tracking_ws import tracking_manager
 from backend.services.inventory_ws import inventory_manager
 from backend.demo_ui import DEMO_HTML
@@ -61,6 +61,7 @@ app.include_router(orders.router)
 app.include_router(forecast.router)
 app.include_router(routes.router)
 app.include_router(upload.router)
+app.include_router(chatbot.router)
 
 @app.get("/")
 def health_check():
@@ -77,6 +78,8 @@ def health_check():
             "forecast": "/api/forecast?crop=tomato&days=7",
             "route_optimization": "/api/routes/optimize",
             "upload_image": "/api/upload",
+            "farmer_chatbot": "/api/chat",
+            "chatbot_suggestions": "/api/chat/suggestions",
             "live_websocket": "/ws/tracking/{order_id}",
             "live_inventory_websocket": "/ws/inventory"
         }

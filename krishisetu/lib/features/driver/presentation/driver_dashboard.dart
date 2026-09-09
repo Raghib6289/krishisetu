@@ -18,10 +18,13 @@ class DriverDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () => ref.read(driverProvider.notifier).loadDriverTasks(),
-          color: AppTheme.primaryGreen,
-          child: CustomScrollView(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: RefreshIndicator(
+              onRefresh: () => ref.read(driverProvider.notifier).loadDriverTasks(),
+              color: AppTheme.primaryGreen,
+              child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
                 child: KrishiHeader(
@@ -329,6 +332,8 @@ class DriverDashboardScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 }

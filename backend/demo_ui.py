@@ -2,7 +2,7 @@
 # Provides immediate visual & functional validation of all 3 portals (Farmer, Buyer, Driver)
 # connected to the live FastAPI server, ARIMA model, OR-Tools VRP, and WebSockets.
 
-DEMO_HTML = """
+DEMO_HTML = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -132,6 +132,197 @@ DEMO_HTML = """
     /* Live Indicator */
     .live-dot { width: 10px; height: 10px; background: #00e676; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite; }
     @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+    
+    /* Floating Assistant Button */
+    .chat-floating-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      background: linear-gradient(135deg, #1b5e20, #2e7d32);
+      color: white;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-radius: 30px;
+      padding: 11px 18px;
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 24px rgba(27,94,32,0.38);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .chat-floating-btn:hover {
+      transform: translateY(-3px) scale(1.03);
+      box-shadow: 0 12px 28px rgba(27,94,32,0.48);
+      background: linear-gradient(135deg, #2e7d32, #388e3c);
+    }
+    .chat-floating-btn .btn-badge {
+      background: #f57f17;
+      color: white;
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    /* Floating Assistant Popup Modal */
+    .chat-floating-popup {
+      position: fixed;
+      bottom: 84px;
+      right: 24px;
+      width: 390px;
+      max-width: calc(100vw - 32px);
+      height: 520px;
+      max-height: calc(100vh - 110px);
+      background: #ffffff;
+      border-radius: 18px;
+      box-shadow: 0 20px 48px rgba(0,0,0,0.18), 0 0 0 1px rgba(27,94,32,0.12);
+      display: flex;
+      flex-direction: column;
+      z-index: 10000;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(24px) scale(0.96);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .chat-floating-popup.open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+    .chat-header {
+      background: linear-gradient(135deg, #1b5e20, #2e7d32);
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .chat-guardrail-badge {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .chat-messages {
+      padding: 14px 16px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #fbfdfb;
+    }
+    .chat-bubble {
+      max-width: 86%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .chat-bubble-user {
+      align-self: flex-end;
+      background: #2e7d32;
+      color: white;
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 2px 6px rgba(46,125,50,0.2);
+    }
+    .chat-bubble-bot {
+      align-self: flex-start;
+      background: #ffffff;
+      color: #1c2826;
+      border: 1px solid #e2ece2;
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .chat-bubble-bot strong { color: #1b5e20; }
+    .chat-bubble-bot ul { margin-left: 16px; margin-top: 4px; }
+    .chat-chips-container {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding: 8px 12px;
+      background: #f4f8f4;
+      border-top: 1px solid #e8f0e8;
+      flex-shrink: 0;
+      scrollbar-width: thin;
+    }
+    .chat-chip {
+      background: white;
+      border: 1px solid #c8dcc8;
+      color: #1b5e20;
+      padding: 5px 11px;
+      border-radius: 14px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .chat-chip:hover {
+      background: #1b5e20;
+      color: white;
+      border-color: #1b5e20;
+    }
+    .chat-chip-guardrail {
+      border-color: #ef9a9a;
+      color: #c62828;
+      background: #ffebee;
+    }
+    .chat-chip-guardrail:hover {
+      background: #c62828;
+      color: white;
+      border-color: #c62828;
+    }
+    .chat-input-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 14px;
+      background: white;
+      border-top: 1px solid #e8f0e8;
+      flex-shrink: 0;
+    }
+    .chat-input {
+      flex: 1;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1.5px solid #ccd8cc;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .chat-input:focus { border-color: #2e7d32; }
+    .typing-dots {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .typing-dot {
+      width: 5px;
+      height: 5px;
+      background: #2e7d32;
+      border-radius: 50%;
+      animation: blink 1.2s infinite ease-in-out;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.1); } }
   </style>
 </head>
 <body>
@@ -288,12 +479,73 @@ DEMO_HTML = """
         </div>
       </div>
     </div>
+  </div>
 
+  <!-- ================= FLOATING AI ASSISTANT (SIDE BUTTON & POPUP) ================= -->
+  <!-- Floating Side Button -->
+  <button id="farmer-chat-trigger" class="chat-floating-btn" onclick="toggleFarmerChat()" title="Open KrishiSetu Sahayak (AI Assistant)">
+    <span style="font-size: 19px;">🤖</span>
+    <span>Krishi Sahayak</span>
+    <span class="btn-badge">AI</span>
+  </button>
+
+  <!-- Floating Assistant Popup Drawer -->
+  <div id="farmer-chat-popup" class="chat-floating-popup">
+    <div class="chat-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 20px;">🤖</span>
+        <div>
+          <div style="font-weight: 800; font-size: 14px; letter-spacing: -0.2px;">KrishiSetu Sahayak</div>
+          <div style="font-size: 10.5px; opacity: 0.9; display: flex; align-items: center; gap: 4px;">
+            <span>AI Farmer Assistant</span>
+            <span>•</span>
+            <span class="chat-guardrail-badge">🔒 Guardrails Active</span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <button onclick="clearFarmerChat()" title="Reset conversation" style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600;">Reset</button>
+        <button onclick="toggleFarmerChat(false)" title="Minimize Assistant" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: 700;">✕</button>
+      </div>
+    </div>
+
+    <!-- Quick Prompt Chips -->
+    <div class="chat-chips-container">
+      <button class="chat-chip" onclick="quickAskChat('How do I list my crop on KrishiSetu to sell directly to buyers?')">🌾 List Crop</button>
+      <button class="chat-chip" onclick="quickAskChat('What is the 7-day price forecast for Tomatoes and best time to sell?')">📈 Tomato Forecast</button>
+      <button class="chat-chip" onclick="quickAskChat('How does Razorpay Escrow guarantee my payment upon delivery?')">💰 Escrow</button>
+      <button class="chat-chip" onclick="quickAskChat('What are the quality requirements for Grade A+ produce vs Grade A?')">⭐ Grade A+</button>
+      <button class="chat-chip" onclick="quickAskChat('How does Google OR-Tools optimize driver pickup routes to my farm?')">🚚 Logistics</button>
+      <button class="chat-chip chat-chip-guardrail" onclick="quickAskChat('Who is the President of France and what is quantum physics?')">🛡️ Test Guardrail</button>
+    </div>
+
+    <!-- Chat Message Stream -->
+    <div class="chat-messages" id="farmer-chat-window">
+      <div class="chat-bubble chat-bubble-bot">
+        <strong>🌾 Namaste Ramesh ji! I am KrishiSetu Sahayak.</strong><br>
+        I am your dedicated assistant strictly bounded to the <strong>KrishiSetu Platform</strong>.<br><br>
+        Ask me about:
+        <ul>
+          <li>Listing produce & direct pricing (+18% vs Mandi)</li>
+          <li>ARIMA 7-day demand forecasts & best harvest timing</li>
+          <li>Escrow payment protection & automated payout releases</li>
+          <li>Quality grading criteria (Grade A+, A, B)</li>
+          <li>OR-Tools truck pickups & GPS order tracking</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Input Bar -->
+    <form onsubmit="handleChatSubmit(event)" class="chat-input-bar">
+      <input type="text" id="farmer-chat-input" class="chat-input" placeholder="Ask Sahayak about KrishiSetu..." autocomplete="off" />
+      <button type="submit" id="farmer-chat-send-btn" class="btn btn-primary" style="padding: 8px 14px; border-radius: 8px; font-weight: 700;">
+        ➔
+      </button>
+    </form>
   </div>
 
   <script>
     let forecastChart = null;
-    let buyerMap = null;
     let driverMap = null;
     let buyerVehicleMarker = null;
     let driverVehicleMarker = null;
@@ -796,6 +1048,160 @@ DEMO_HTML = """
         btn.style.background = 'var(--accent)';
         clearInterval(streamTimer);
         log.textContent = 'Streaming paused.';
+      }
+    }
+
+    // ================= FARMER AI CHATBOT HANDLERS =================
+    let chatConversationHistory = [];
+
+    function toggleFarmerChat(forceState) {
+      const popup = document.getElementById('farmer-chat-popup');
+      if (typeof forceState === 'boolean') {
+        if (forceState) popup.classList.add('open');
+        else popup.classList.remove('open');
+      } else {
+        popup.classList.toggle('open');
+      }
+      if (popup.classList.contains('open')) {
+        setTimeout(() => {
+          const inp = document.getElementById('farmer-chat-input');
+          if (inp) inp.focus();
+        }, 150);
+      }
+    }
+
+    function quickAskChat(question) {
+      toggleFarmerChat(true);
+      document.getElementById('farmer-chat-input').value = question;
+      handleChatSubmit();
+    }
+
+    function clearFarmerChat() {
+      chatConversationHistory = [];
+      const chatWin = document.getElementById('farmer-chat-window');
+      chatWin.innerHTML = `
+        <div class="chat-bubble chat-bubble-bot">
+          <strong>🌾 Chat Reset.</strong><br>
+          KrishiSetu Sahayak is ready! How can I assist with your crops, listings, pricing, or payouts today?
+        </div>
+      `;
+    }
+
+    async function handleChatSubmit(e) {
+      if (e) e.preventDefault();
+      const input = document.getElementById('farmer-chat-input');
+      const sendBtn = document.getElementById('farmer-chat-send-btn');
+      const chatWin = document.getElementById('farmer-chat-window');
+      const userText = input.value.trim();
+
+      if (!userText) return;
+
+      // Append user bubble
+      const userBubble = document.createElement('div');
+      userBubble.className = 'chat-bubble chat-bubble-user';
+      userBubble.textContent = userText;
+      chatWin.appendChild(userBubble);
+      input.value = '';
+      chatWin.scrollTop = chatWin.scrollHeight;
+
+      // Append typing indicator
+      const typingBubble = document.createElement('div');
+      typingBubble.className = 'chat-bubble chat-bubble-bot';
+      typingBubble.id = 'chat-typing-indicator';
+      typingBubble.innerHTML = `
+        <span style="font-size: 11px; color: #555; margin-right: 6px;">Sahayak is thinking</span>
+        <span class="typing-dots">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </span>
+      `;
+      chatWin.appendChild(typingBubble);
+      chatWin.scrollTop = chatWin.scrollHeight;
+      sendBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userText,
+            history: chatConversationHistory,
+            user_role: 'farmer'
+          })
+        });
+
+        // Remove typing indicator
+        const typingEl = document.getElementById('chat-typing-indicator');
+        if (typingEl) typingEl.remove();
+
+        if (res.ok) {
+          const data = await res.json();
+          const botBubble = document.createElement('div');
+          botBubble.className = 'chat-bubble chat-bubble-bot';
+          
+          // Format bot response (render simple markdown bullets/bold)
+          let formatted = data.reply
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n\n/g, '<br><br>')
+            .replace(/\n\* /g, '<br>• ')
+            .replace(/\n- /g, '<br>• ')
+            .replace(/\n/g, '<br>');
+
+          botBubble.innerHTML = formatted;
+
+          // Render suggested action chips if provided
+          if (data.suggested_actions && data.suggested_actions.length > 0) {
+            const chipsDiv = document.createElement('div');
+            chipsDiv.style.marginTop = '8px';
+            chipsDiv.style.display = 'flex';
+            chipsDiv.style.flexWrap = 'wrap';
+            chipsDiv.style.gap = '6px';
+            
+            data.suggested_actions.forEach(act => {
+              const chip = document.createElement('button');
+              chip.className = 'chat-chip';
+              chip.style.fontSize = '10.5px';
+              chip.style.padding = '4px 8px';
+              chip.textContent = '💡 ' + act;
+              chip.onclick = () => quickAskChat(act);
+              chipsDiv.appendChild(chip);
+            });
+            botBubble.appendChild(chipsDiv);
+          }
+
+          chatWin.appendChild(botBubble);
+
+          // Update multi-turn history
+          chatConversationHistory.push({ role: 'user', content: userText });
+          chatConversationHistory.push({ role: 'assistant', content: data.reply });
+          if (chatConversationHistory.length > 10) {
+            chatConversationHistory = chatConversationHistory.slice(-10);
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          const errBubble = document.createElement('div');
+          errBubble.className = 'chat-bubble chat-bubble-bot';
+          errBubble.style.color = '#c62828';
+          errBubble.innerHTML = `⚠️ <strong>Sahayak Error:</strong> ${errData.detail || 'Unable to connect to assistant service. Please check your backend connection.'}`;
+          chatWin.appendChild(errBubble);
+        }
+      } catch (err) {
+        const typingEl = document.getElementById('chat-typing-indicator');
+        if (typingEl) typingEl.remove();
+
+        const errBubble = document.createElement('div');
+        errBubble.className = 'chat-bubble chat-bubble-bot';
+        errBubble.style.color = '#c62828';
+        errBubble.innerHTML = `⚠️ <strong>Network Error:</strong> ${err.message}`;
+        chatWin.appendChild(errBubble);
+      } finally {
+        sendBtn.disabled = false;
+        chatWin.scrollTop = chatWin.scrollHeight;
+        input.focus();
       }
     }
 
